@@ -1,6 +1,6 @@
 # 🏀 Hoop Blast
 
-A basketball-themed take on the Block Blast puzzle game. Drag pieces made of basketballs onto an 8×8 hardwood court, fill full rows or columns to clear them, and keep the streak going.
+A futuristic, basketball-themed take on the Block Blast puzzle game. Drag pieces made of basketballs onto an 9×9 neon court, fill full rows or columns to clear them, and keep the streak going.
 
 **▶ Play it: https://omeregepeksari.github.io/hoop-blast/**
 
