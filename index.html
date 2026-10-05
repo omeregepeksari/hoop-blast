@@ -96,7 +96,7 @@
 
 <script>
 (() => {
-  const N = 9;
+  const N = 8;
   const M = 10; // margin around the board for glow / corner brackets
   const cv = document.getElementById('game');
   const ctx = cv.getContext('2d');
@@ -145,14 +145,18 @@
   const TOTAL_W = SHAPES.reduce((s, x) => s + x[1], 0);
 
   const COLORS = [
-    { c: '#ff8a1f', rgb: '255,138,31' },  // neon basketball orange
-    { c: '#00f0ff', rgb: '0,240,255' },
-    { c: '#ff2bd6', rgb: '255,43,214' },
-    { c: '#7cff3a', rgb: '124,255,58' },
-    { c: '#9b6bff', rgb: '155,107,255' },
-    { c: '#ffe14d', rgb: '255,225,77' },
-    { c: '#ff3b5c', rgb: '255,59,92' },
+    { c: '#ff7a1a', rgb: '255,122,26' },  // basketball orange
+    { c: '#12d6f0', rgb: '18,214,240' },
+    { c: '#ff3fd0', rgb: '255,63,208' },
+    { c: '#5fe03c', rgb: '95,224,60' },
+    { c: '#8b5cff', rgb: '139,92,255' },
+    { c: '#ffc928', rgb: '255,201,40' },
+    { c: '#ff3d63', rgb: '255,61,99' },
   ];
+  const shade = (rgb, f) => {
+    const v = rgb.split(',').map(Number).map(x => Math.round(f > 0 ? x + (255 - x) * f : x * (1 + f)));
+    return `rgb(${v.join(',')})`;
+  };
 
   function randomPiece() {
     let x = Math.random() * TOTAL_W, shape = SHAPES[0][0];
@@ -237,18 +241,28 @@
     }
     // neon court markings
     const cx = BS / 2;
-    g.lineWidth = Math.max(1.5, cell * 0.05);
+    const u = BS / 9; // markings scale with the board, not the cell count
+    g.lineWidth = Math.max(1.5, u * 0.05);
     g.shadowBlur = 10;
     g.strokeStyle = 'rgba(255,43,214,.55)'; g.shadowColor = '#ff2bd6';
     g.fillStyle = 'rgba(255,43,214,.07)';
-    g.fillRect(cx - cell * 1.7, BS - cell * 3.8, cell * 3.4, cell * 3.8);
-    g.strokeRect(cx - cell * 1.7, BS - cell * 3.8, cell * 3.4, cell * 3.9);
-    g.beginPath(); g.arc(cx, BS - cell * 3.8, cell * 1.7, Math.PI, 0); g.stroke();
+    // paint + free-throw circle (top of circle sits 4.5 cells up)
+    g.fillRect(cx - u * 1.5, BS - u * 3, u * 3, u * 3);
+    g.strokeRect(cx - u * 1.5, BS - u * 3, u * 3, u * 3.1);
+    g.beginPath(); g.arc(cx, BS - u * 3, u * 1.5, Math.PI, 0); g.stroke();
+    g.setLineDash([u * 0.2, u * 0.16]);
+    g.beginPath(); g.arc(cx, BS - u * 3, u * 1.5, 0, Math.PI); g.stroke();
+    g.setLineDash([]);
+    // rim + backboard
+    g.beginPath(); g.moveTo(cx - u * 0.5, BS - u * 0.35); g.lineTo(cx + u * 0.5, BS - u * 0.35); g.stroke();
+    g.beginPath(); g.arc(cx, BS - u * 0.62, u * 0.24, 0, Math.PI * 2); g.stroke();
+    // three-point line (top of arc 5.1 cells up, clearly outside the free-throw circle)
     g.strokeStyle = 'rgba(0,240,255,.5)'; g.shadowColor = '#00f0ff';
-    g.beginPath(); g.moveTo(cx - cell * 4, BS); g.lineTo(cx - cell * 4, BS - cell * 1.2);
-    g.arc(cx, BS - cell * 1.2, cell * 4, Math.PI, 0); g.lineTo(cx + cell * 4, BS); g.stroke();
-    g.beginPath(); g.arc(cx, 0, cell * 1.7, 0, Math.PI); g.stroke();
-    g.beginPath(); g.arc(cx, 0, cell * 0.6, 0, Math.PI); g.stroke();
+    const r3 = u * 4.3, by = BS - u * 0.8;
+    g.beginPath(); g.moveTo(cx - r3, BS); g.lineTo(cx - r3, by);
+    g.arc(cx, by, r3, Math.PI, 0); g.lineTo(cx + r3, BS); g.stroke();
+    g.beginPath(); g.arc(cx, 0, u * 1.7, 0, Math.PI); g.stroke();
+    g.beginPath(); g.arc(cx, 0, u * 0.6, 0, Math.PI); g.stroke();
     g.shadowBlur = 0;
     // cell slots
     const p = cell * 0.07;
@@ -259,7 +273,7 @@
     }
     // 3x3 sector dividers
     g.strokeStyle = 'rgba(0,240,255,.22)'; g.lineWidth = 1;
-    for (let i = 3; i < N; i += 3) {
+    for (let i = N % 3 ? 4 : 3; i < N; i += N % 3 ? 4 : 3) {
       g.beginPath(); g.moveTo(i * cell, 0); g.lineTo(i * cell, BS); g.moveTo(0, i * cell); g.lineTo(BS, i * cell); g.stroke();
     }
   }
@@ -272,37 +286,56 @@
       c.width = c.height = Math.ceil(size * dpr);
       const g = c.getContext('2d');
       g.scale(dpr, dpr); g.translate(pad, pad);
-      const p = s * 0.07, r = s * 0.16;
-      // glow + dark glass body
-      g.shadowColor = col.c; g.shadowBlur = glow ? s * 0.55 : s * 0.22;
-      rrect(g, p, p, s - 2 * p, s - 2 * p, r);
-      g.fillStyle = '#0a0b22'; g.fill();
+      const p = s * 0.05, r = s * 0.2, w = s - 2 * p, depth = s * 0.08;
+      // outer glow + 3D base (darker bottom edge)
+      g.shadowColor = col.c; g.shadowBlur = glow ? s * 0.6 : s * 0.18;
+      rrect(g, p, p, w, w, r);
+      g.fillStyle = shade(col.rgb, -0.45); g.fill();
       g.shadowBlur = 0;
-      g.save(); g.clip();
-      const body = g.createLinearGradient(0, 0, s, s);
-      body.addColorStop(0, `rgba(${col.rgb},${glow ? .75 : .55})`);
-      body.addColorStop(1, `rgba(${col.rgb},${glow ? .3 : .14})`);
-      g.fillStyle = body; g.fillRect(0, 0, s, s);
-      // basketball seams, glowing
-      const cx = s / 2, cy = s / 2;
-      g.strokeStyle = 'rgba(255,255,255,.9)'; g.shadowColor = col.c; g.shadowBlur = s * 0.12;
-      g.lineWidth = Math.max(1, s * 0.04); g.lineCap = 'round';
-      g.beginPath();
-      g.moveTo(cx, 0); g.lineTo(cx, s);
-      g.moveTo(0, cy); g.lineTo(s, cy);
-      g.moveTo(s * 0.17, 0); g.quadraticCurveTo(s * 0.46, cy, s * 0.17, s);
-      g.moveTo(s * 0.83, 0); g.quadraticCurveTo(s * 0.54, cy, s * 0.83, s);
-      g.stroke();
-      g.shadowBlur = 0;
-      // glass sheen
-      const sh = g.createLinearGradient(0, 0, 0, s * 0.5);
-      sh.addColorStop(0, 'rgba(255,255,255,.28)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = sh; g.fillRect(0, 0, s, s * 0.5);
+      // top face
+      const fh = w - depth;
+      rrect(g, p, p, w, fh, r);
+      const face = g.createLinearGradient(0, p, 0, p + fh);
+      face.addColorStop(0, shade(col.rgb, glow ? 0.55 : 0.38));
+      face.addColorStop(0.5, col.c);
+      face.addColorStop(1, shade(col.rgb, -0.12));
+      g.fillStyle = face; g.fill();
+      // bevel highlight
+      g.save(); rrect(g, p, p, w, fh, r); g.clip();
+      const bev = g.createLinearGradient(0, p, 0, p + fh * 0.45);
+      bev.addColorStop(0, 'rgba(255,255,255,.55)'); bev.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = bev; g.fillRect(p, p, w, fh * 0.45);
       g.restore();
-      // neon rim
-      rrect(g, p, p, s - 2 * p, s - 2 * p, r);
-      g.strokeStyle = col.c; g.lineWidth = Math.max(1.2, s * 0.055);
-      g.shadowColor = col.c; g.shadowBlur = s * 0.2; g.stroke();
+      // inset inner panel
+      const ip = s * 0.17;
+      rrect(g, ip, ip, s - 2 * ip, s - 2 * ip - depth, r * 0.6);
+      const inner = g.createLinearGradient(0, ip, 0, s - ip - depth);
+      inner.addColorStop(0, 'rgba(0,0,0,.18)'); inner.addColorStop(1, 'rgba(255,255,255,.1)');
+      g.fillStyle = inner; g.fill();
+      g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = Math.max(1, s * 0.02); g.stroke();
+      // basketball emblem
+      const cx = s / 2, cy = (p + fh + p) / 2, br = s * 0.2;
+      g.save();
+      g.beginPath(); g.arc(cx, cy, br, 0, Math.PI * 2);
+      const ball = g.createRadialGradient(cx - br * 0.35, cy - br * 0.35, br * 0.1, cx, cy, br);
+      ball.addColorStop(0, 'rgba(255,255,255,.45)'); ball.addColorStop(1, 'rgba(255,255,255,.08)');
+      g.fillStyle = ball; g.fill();
+      g.clip();
+      g.strokeStyle = shade(col.rgb, -0.55); g.lineWidth = Math.max(1, s * 0.03); g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(cx, cy - br); g.lineTo(cx, cy + br);
+      g.moveTo(cx - br, cy); g.lineTo(cx + br, cy);
+      g.moveTo(cx - br * 0.72, cy - br); g.quadraticCurveTo(cx - br * 0.15, cy, cx - br * 0.72, cy + br);
+      g.moveTo(cx + br * 0.72, cy - br); g.quadraticCurveTo(cx + br * 0.15, cy, cx + br * 0.72, cy + br);
+      g.stroke();
+      g.restore();
+      g.beginPath(); g.arc(cx, cy, br, 0, Math.PI * 2);
+      g.strokeStyle = shade(col.rgb, -0.55); g.lineWidth = Math.max(1, s * 0.035); g.stroke();
+      // crisp outline + top rim light
+      rrect(g, p, p, w, w, r);
+      g.strokeStyle = glow ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.35)'; g.lineWidth = Math.max(1, s * 0.025); g.stroke();
+      g.beginPath(); g.moveTo(p + r, p + 1); g.lineTo(p + w - r, p + 1);
+      g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 1; g.stroke();
       return c;
     }));
   }
@@ -324,35 +357,61 @@
   function bgResize() {
     bw = window.innerWidth; bh = window.innerHeight;
     bg.width = Math.round(bw * dpr); bg.height = Math.round(bh * dpr);
+    buildHex();
   }
+  // Hex pattern cached per resize
+  let hex;
+  function buildHex() {
+    hex = document.createElement('canvas');
+    hex.width = Math.round(bw * dpr); hex.height = Math.round(bh * dpr);
+    const g = hex.getContext('2d');
+    g.scale(dpr, dpr);
+    const R = 22, hw = Math.sqrt(3) * R;
+    g.strokeStyle = 'rgba(120,200,255,.07)'; g.lineWidth = 1;
+    for (let row = -1, y = 0; y < bh + R * 2; row++, y = row * R * 1.5) {
+      for (let x = (row % 2) * hw / 2 - hw; x < bw + hw; x += hw) {
+        g.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = Math.PI / 3 * i + Math.PI / 6;
+          g.lineTo(x + R * Math.cos(a), y + R * Math.sin(a));
+        }
+        g.closePath(); g.stroke();
+      }
+    }
+  }
+  const BLOBS = [
+    { rgb: '18,214,240', ax: 0.35, ay: 0.25, fx: 0.00011, fy: 0.00017, r: 0.55 },
+    { rgb: '139,92,255', ax: 0.4, ay: 0.3, fx: 0.00008, fy: 0.00012, r: 0.65 },
+    { rgb: '255,63,208', ax: 0.3, ay: 0.35, fx: 0.00013, fy: 0.00007, r: 0.45 },
+  ];
   function drawBg(now) {
     bx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const sky = bx.createLinearGradient(0, 0, 0, bh);
-    sky.addColorStop(0, '#05010f'); sky.addColorStop(0.55, '#140636'); sky.addColorStop(1, '#05010f');
-    bx.fillStyle = sky; bx.fillRect(0, 0, bw, bh);
-    const hz = bh * 0.64;
-    const glow = bx.createRadialGradient(bw / 2, hz, 0, bw / 2, hz, Math.max(bw, bh) * 0.6);
-    glow.addColorStop(0, 'rgba(255,43,214,.32)'); glow.addColorStop(0.4, 'rgba(110,40,255,.12)'); glow.addColorStop(1, 'rgba(0,0,0,0)');
-    bx.fillStyle = glow; bx.fillRect(0, 0, bw, bh);
-    // perspective floor grid
-    bx.save();
-    bx.beginPath(); bx.rect(0, hz, bw, bh - hz); bx.clip();
-    bx.lineWidth = 1;
-    const off = (now / 2600) % 1;
-    for (let i = 0; i < 18; i++) {
-      const t = (i + off) / 18, y = hz + (bh - hz) * t * t;
-      bx.strokeStyle = `rgba(255,43,214,${0.08 + t * 0.4})`;
-      bx.beginPath(); bx.moveTo(0, y); bx.lineTo(bw, y); bx.stroke();
-    }
-    for (let k = -24; k <= 24; k++) {
-      bx.strokeStyle = 'rgba(0,240,255,.18)';
-      bx.beginPath(); bx.moveTo(bw / 2 + k * 14, hz); bx.lineTo(bw / 2 + k * bw * 0.09, bh); bx.stroke();
-    }
-    const fade = bx.createLinearGradient(0, hz, 0, hz + 60);
-    fade.addColorStop(0, 'rgba(20,6,54,1)'); fade.addColorStop(1, 'rgba(20,6,54,0)');
-    bx.fillStyle = fade; bx.fillRect(0, hz, bw, 60);
-    bx.restore();
-    bx.fillStyle = 'rgba(255,43,214,.7)'; bx.fillRect(0, hz, bw, 1);
+    const base = bx.createRadialGradient(bw / 2, bh * 0.4, 0, bw / 2, bh * 0.4, Math.max(bw, bh) * 0.8);
+    base.addColorStop(0, '#0e1638'); base.addColorStop(1, '#03050f');
+    bx.fillStyle = base; bx.fillRect(0, 0, bw, bh);
+    // drifting aurora light
+    bx.globalCompositeOperation = 'lighter';
+    BLOBS.forEach((b, i) => {
+      const x = bw * (0.5 + b.ax * Math.sin(now * b.fx + i * 2));
+      const y = bh * (0.45 + b.ay * Math.cos(now * b.fy + i));
+      const rad = Math.max(bw, bh) * b.r;
+      const gr = bx.createRadialGradient(x, y, 0, x, y, rad);
+      gr.addColorStop(0, `rgba(${b.rgb},.16)`); gr.addColorStop(1, `rgba(${b.rgb},0)`);
+      bx.fillStyle = gr; bx.fillRect(0, 0, bw, bh);
+    });
+    bx.globalCompositeOperation = 'source-over';
+    // hex field with a slow shimmer band
+    bx.globalAlpha = 0.9;
+    bx.drawImage(hex, 0, 0, bw, bh);
+    bx.globalAlpha = 1;
+    const by = ((now / 7000) % 1) * (bh + 400) - 200;
+    const band = bx.createLinearGradient(0, by - 140, 0, by + 140);
+    band.addColorStop(0, 'rgba(18,214,240,0)'); band.addColorStop(0.5, 'rgba(18,214,240,.06)'); band.addColorStop(1, 'rgba(18,214,240,0)');
+    bx.fillStyle = band; bx.fillRect(0, by - 140, bw, 280);
+    // vignette
+    const vg = bx.createRadialGradient(bw / 2, bh / 2, Math.min(bw, bh) * 0.3, bw / 2, bh / 2, Math.max(bw, bh) * 0.75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
+    bx.fillStyle = vg; bx.fillRect(0, 0, bw, bh);
     // drifting particles
     for (const d of dust) {
       d.y -= d.v * 16; if (d.y < 0) { d.y = 1; d.x = Math.random(); }
