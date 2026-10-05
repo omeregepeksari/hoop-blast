@@ -39,7 +39,27 @@
   .val.best{color:var(--pink);text-shadow:0 0 12px rgba(255,43,214,.8)}
   .mid{display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:86px;
        border-left:1px solid rgba(0,240,255,.15);border-right:1px solid rgba(0,240,255,.15);padding:0 8px}
-  #streak{font-size:15px;font-weight:900;color:var(--yellow);text-shadow:0 0 10px rgba(255,225,77,.7);margin-top:3px}
+  #lines{font-size:clamp(16px,5vw,20px);font-weight:900;color:var(--yellow);text-shadow:0 0 10px rgba(255,225,77,.7);margin-top:2px}
+  .combo{margin-top:8px;padding:7px 10px 8px;border:1px solid rgba(0,240,255,.22);border-radius:8px;
+     background:linear-gradient(180deg,rgba(20,30,70,.45),rgba(10,8,35,.45));transition:box-shadow .3s,border-color .3s}
+  .combo-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  #comboX{font-size:15px;font-weight:900;color:#fff;min-width:44px;transition:color .3s,text-shadow .3s}
+  #comboTag{flex:1;font-size:9px;letter-spacing:3px;color:rgba(200,230,255,.55)}
+  .pips{display:flex;gap:4px;align-items:center}
+  .pips .lbl{margin-right:2px}
+  .pips i{width:8px;height:8px;border-radius:2px;background:rgba(255,255,255,.12);transform:rotate(45deg);transition:background .25s,box-shadow .25s}
+  .pips i.on{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
+  .bar{position:relative;height:10px;border-radius:5px;background:rgba(255,255,255,.07);overflow:hidden}
+  #comboFill{position:absolute;inset:0 auto 0 0;width:0;border-radius:5px;
+     background:linear-gradient(90deg,#12d6f0,#ffc928 45%,#ff7a1a 70%,#ff3fd0);background-size:360px 100%;
+     box-shadow:0 0 12px rgba(255,201,40,.6);transition:width .35s cubic-bezier(.2,1.4,.4,1)}
+  .bar .ticks{position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 2px),rgba(5,1,15,.85) calc(10% - 2px) 10%)}
+  .combo.hot{border-color:rgba(255,122,26,.7);animation:hot .6s ease-in-out infinite alternate}
+  .combo.hot #comboX{color:#ffc928;text-shadow:0 0 12px #ff7a1a}
+  .combo.max #comboX{color:#ff3fd0;text-shadow:0 0 14px #ff3fd0}
+  @keyframes hot{from{box-shadow:0 0 8px rgba(255,122,26,.25)}to{box-shadow:0 0 22px rgba(255,122,26,.6)}}
+  .combo.bump{animation:bump .35s ease}
+  @keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.05)}100%{transform:scale(1)}}
   .hint{margin-top:8px;font-size:8px;letter-spacing:2px;color:rgba(160,190,255,.5);text-align:center}
   canvas#game{display:block;touch-action:none;cursor:grab}
   #overlay{position:fixed;inset:0;background:rgba(3,1,12,.8);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;z-index:10;padding:16px}
@@ -77,8 +97,15 @@
   </div>
   <div class="hud">
     <div class="sb"><div class="lbl">SCORE</div><div class="val" id="score">0</div></div>
-    <div class="mid"><div class="lbl">STREAK</div><div id="streak">—</div></div>
+    <div class="mid"><div class="lbl">LINES</div><div id="lines">0</div></div>
     <div class="sb"><div class="lbl">BEST</div><div class="val best" id="best">0</div></div>
+  </div>
+  <div class="combo" id="combo">
+    <div class="combo-top">
+      <span id="comboX">x0</span><span id="comboTag">COMBO</span>
+      <span class="pips" title="Moves left to keep the combo"><span class="lbl">KEEP</span><i></i><i></i><i></i></span>
+    </div>
+    <div class="bar"><div id="comboFill"></div><div class="ticks"></div></div>
   </div>
   <div class="hint">DRAG BALLS ONTO THE COURT · FILL A ROW OR COLUMN TO SCORE</div>
 </header>
@@ -97,7 +124,7 @@
 <script>
 (() => {
   const N = 8;
-  const M = 10; // margin around the board for glow / corner brackets
+  const M = 22; // margin around the board for glow / corner brackets
   const cv = document.getElementById('game');
   const ctx = cv.getContext('2d');
   const $ = id => document.getElementById(id);
@@ -165,8 +192,8 @@
   }
 
   // ---------- State ----------
-  let grid, tray, score, shown, best, streak, sinceClear, over;
-  let drag = null, anims = [], parts = [], pops = [], beams = [], rings = [], flash = 0, shake = 0;
+  let grid, tray, score, shown, best, streak, sinceClear, over, totalLines;
+  let drag = null, anims = [], parts = [], pops = [], beams = [], rings = [], sparks = [], flash = 0, shake = 0, edge = null;
   try { best = +localStorage.getItem('hoopblast-best') || 0; } catch (e) { best = 0; }
 
   const canPlace = (p, r, c, g = grid) => p.cells.every(([dr, dc]) => {
@@ -188,16 +215,27 @@
 
   function newGame() {
     grid = Array.from({ length: N }, () => Array(N).fill(null));
-    score = 0; shown = 0; streak = 0; sinceClear = 0; over = false;
-    anims = []; parts = []; pops = []; beams = []; rings = []; drag = null;
+    score = 0; shown = 0; streak = 0; sinceClear = 0; over = false; totalLines = 0;
+    anims = []; parts = []; pops = []; beams = []; rings = []; sparks = []; edge = null; drag = null;
     refill();
+    if (location.hash === '#demo') { // preset board one move from a double clear, for previewing effects
+      for (const r of [N - 2, N - 1]) for (let c = 0; c < N - 1; c++) grid[r][c] = (r + c) % COLORS.length;
+      tray[0] = { cells: [[0, 0], [1, 0]], w: 1, h: 2, color: 0 };
+    }
     $('overlay').classList.remove('show');
     hud();
   }
 
   function hud() {
     $('best').textContent = Math.max(best, score);
-    $('streak').textContent = streak >= 2 ? `x${streak} 🔥` : streak === 1 ? 'x1' : '—';
+    $('lines').textContent = totalLines;
+    const box = $('combo');
+    $('comboX').textContent = 'x' + streak;
+    $('comboTag').textContent = streak >= 6 ? 'UNSTOPPABLE' : streak >= 3 ? 'ON FIRE 🔥' : streak === 2 ? 'HEATING UP' : 'COMBO';
+    $('comboFill').style.width = Math.min(streak, 10) * 10 + '%';
+    box.querySelectorAll('.pips i').forEach((el, i) => el.classList.toggle('on', streak > 0 && i < 3 - sinceClear));
+    box.classList.toggle('hot', streak >= 3);
+    box.classList.toggle('max', streak >= 6);
   }
 
   // ---------- Layout ----------
@@ -478,7 +516,8 @@
     const { rows, cols } = fullLines(grid);
     const lines = rows.length + cols.length;
     if (lines) {
-      streak++; sinceClear = 0;
+      streak++; sinceClear = 0; totalLines += lines;
+      const cb = $('combo'); cb.classList.remove('bump'); void cb.offsetWidth; cb.classList.add('bump');
       const cleared = new Set();
       rows.forEach(rr => { for (let cc = 0; cc < N; cc++) cleared.add(rr * N + cc); });
       cols.forEach(cc => { for (let rr = 0; rr < N; rr++) cleared.add(rr * N + cc); });
@@ -491,27 +530,36 @@
         const delay = 60 + Math.hypot(rr + 0.5 - cr, cc + 0.5 - cc0) * 28;
         anims.push({ r: rr, c: cc, color, t0: now + delay });
         sx += cc; sy += rr;
-        for (let j = 0; j < 5; j++) parts.push({
-          x: (cc + Math.random()) * cell, y: (rr + Math.random()) * cell,
-          vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6 - 1.5,
-          s: cell * (0.05 + Math.random() * 0.09), color, life: 1, t0: now + delay,
-        });
+        for (let j = 0; j < 11; j++) {
+          const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 9;
+          parts.push({
+            x: (cc + 0.5) * cell, y: (rr + 0.5) * cell,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 2,
+            s: cell * (0.07 + Math.random() * 0.14), color, life: 1, t0: now + delay,
+            decay: 0.012 + Math.random() * 0.014, spin: Math.random() * 6,
+          });
+        }
       }
       for (const k of cleared) grid[Math.floor(k / N)][k % N] = null;
       const pts = 10 * lines * lines + 10 * lines * (streak - 1);
       score += pts;
       const px = (sx / cleared.size + 0.5) * cell, py = (sy / cleared.size + 0.5) * cell;
-      pop(CALLS[Math.min(lines, 5)], px, py, lines >= 3 ? 1.2 : 1, lines >= 3 ? '#ffe14d' : '#00f0ff');
-      pop('+' + pts, px, py + cell * 0.85, 0.6, '#ff2bd6', 120);
-      if (streak >= 2) pop(streak >= 3 ? `ON FIRE x${streak}` : `HEATING UP x${streak}`, BS / 2, cell * 1.2, 0.75, '#ff8a1f', 220);
+      const big = 1 + Math.min(lines - 1, 3) * 0.15;
+      rings.push({ x: px, y: py, color: COLORS[p.color].rgb, t0: now + 40, max: BS * 0.55 * big, dur: 600, w: 7 });
+      rings.push({ x: px, y: py, color: '255,255,255', t0: now + 140, max: BS * 0.4 * big, dur: 520, w: 4 });
+      if (lines >= 2) rings.push({ x: px, y: py, color: COLORS[p.color].rgb, t0: now + 260, max: BS * 0.8, dur: 700, w: 10 });
+      edge = { color: COLORS[p.color], t0: now, dur: 700 + lines * 150 };
+      pop(CALLS[Math.min(lines, 5)], px, py, (lines >= 3 ? 1.75 : 1.45) * big, lines >= 3 ? '#ffe14d' : '#12d6f0');
+      pop('+' + pts, px, py + cell * 1.1, 0.9, '#ff3fd0', 120);
+      if (streak >= 2) pop(streak >= 3 ? `ON FIRE x${streak}` : `HEATING UP x${streak}`, BS / 2, cell * 1.1, 1.05, '#ff7a1a', 220);
       if (grid.every(row => row.every(v => v === null))) {
         score += 300;
-        pop('NOTHING BUT NET', BS / 2, BS / 2 + cell, 0.95, '#7cff3a', 380);
-        pop('+300', BS / 2, BS / 2 + cell * 1.9, 0.7, '#7cff3a', 420);
+        pop('NOTHING BUT NET', BS / 2, BS / 2 + cell, 1.3, '#5fe03c', 380);
+        pop('+300', BS / 2, BS / 2 + cell * 2.1, 1, '#5fe03c', 420);
         flash = 1;
       }
-      flash = Math.max(flash, Math.min(0.6, 0.15 * lines));
-      shake = Math.min(12, 2 + lines * 3);
+      flash = Math.max(flash, Math.min(0.75, 0.3 + 0.15 * lines));
+      shake = Math.min(22, 7 + lines * 4);
       sfx.clear(lines);
       if (streak >= 2) setTimeout(() => sfx.combo(streak), 140);
     } else {
@@ -610,26 +658,31 @@
     ctx.globalCompositeOperation = 'lighter';
     // dissolving cells
     anims = anims.filter(a => {
-      const k = (now - a.t0) / 340;
+      const k = (now - a.t0) / 420;
       if (k < 0) { drawBall(a.c * cell, a.r * cell, cell, a.color, 1, true); return true; }
       if (k >= 1) return false;
-      const s = cell * (1 - k * 0.6), off = (cell - s) / 2;
-      drawBall(a.c * cell + off, a.r * cell + off, s, a.color, (1 - k) * 0.9, true);
+      const s = cell * (1 + Math.sin(Math.min(k * 2.2, 1) * Math.PI / 2) * 0.75), off = (cell - s) / 2;
+      drawBall(a.c * cell + off, a.r * cell + off, s, a.color, (1 - k) * (1 - k), true);
       return true;
     });
     // laser beams
     beams = beams.filter(b => {
-      const k = (now - b.t0) / 480;
+      const k = (now - b.t0) / 700;
       if (k >= 1) return false;
-      const th = cell * (k < 0.25 ? k / 0.25 : 1 - (k - 0.25) / 0.75) * 0.9;
-      const along = Math.min(1, k / 0.18) * BS;
+      const th = cell * (k < 0.2 ? k / 0.2 : 1 - (k - 0.2) / 0.8) * 1.6;
+      const along = Math.min(1, k / 0.15) * (BS + 2 * M);
+      if (k < 0.5 && Math.random() < 0.9) for (let j = 0; j < 3; j++) {
+        const u = Math.random() * BS, mid = (b.idx + 0.5) * cell, dir = Math.random() < 0.5 ? -1 : 1;
+        sparks.push({ x: b.row ? u : mid, y: b.row ? mid : u, vx: b.row ? (Math.random() - 0.5) * 3 : dir * (4 + Math.random() * 6),
+          vy: b.row ? dir * (4 + Math.random() * 6) : (Math.random() - 0.5) * 3, life: 1, rgb: b.color.rgb });
+      }
       ctx.save();
-      ctx.shadowColor = b.color.c; ctx.shadowBlur = 24;
-      ctx.fillStyle = `rgba(${b.color.rgb},.55)`;
+      ctx.shadowColor = b.color.c; ctx.shadowBlur = 40;
+      ctx.fillStyle = `rgba(${b.color.rgb},.6)`;
       if (b.row) ctx.fillRect(BS / 2 - along / 2, (b.idx + 0.5) * cell - th / 2, along, th);
       else ctx.fillRect((b.idx + 0.5) * cell - th / 2, BS / 2 - along / 2, th, along);
       ctx.fillStyle = 'rgba(255,255,255,.9)';
-      const core = Math.max(1, th * 0.18);
+      const core = Math.max(2, th * 0.28);
       if (b.row) ctx.fillRect(BS / 2 - along / 2, (b.idx + 0.5) * cell - core / 2, along, core);
       else ctx.fillRect((b.idx + 0.5) * cell - core / 2, BS / 2 - along / 2, core, along);
       ctx.restore();
@@ -637,24 +690,47 @@
     });
     // shockwave rings
     rings = rings.filter(g => {
-      const k = (now - g.t0) / 380;
+      const k = (now - g.t0) / (g.dur || 380);
+      if (k < 0) return true;
       if (k >= 1) return false;
-      ctx.strokeStyle = `rgba(${g.color},${(1 - k) * 0.7})`; ctx.lineWidth = 2 + (1 - k) * 3;
+      ctx.strokeStyle = `rgba(${g.color},${(1 - k) * 0.8})`; ctx.lineWidth = 2 + (1 - k) * (g.w || 3);
       ctx.beginPath(); ctx.arc(g.x, g.y, g.max * (0.3 + k * 0.9), 0, Math.PI * 2); ctx.stroke();
       return true;
     });
     // pixel shards
     parts = parts.filter(q => {
       if (now < q.t0) return true;
-      q.vx *= 0.96; q.vy = q.vy * 0.96 + 0.08; q.x += q.vx; q.y += q.vy; q.life -= 0.024;
+      q.vx *= 0.95; q.vy = q.vy * 0.95 + 0.12; q.x += q.vx; q.y += q.vy; q.life -= q.decay || 0.024;
       if (q.life <= 0) return false;
+      ctx.save();
+      ctx.translate(q.x, q.y); ctx.rotate(q.spin * q.life);
       ctx.fillStyle = `rgba(${COLORS[q.color].rgb},${q.life})`;
-      ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s);
+      const s = q.s * (0.5 + q.life * 0.5);
+      ctx.fillRect(-s / 2, -s / 2, s, s);
+      ctx.restore();
       return true;
     });
+    sparks = sparks.filter(q => {
+      q.x += q.vx; q.y += q.vy; q.vx *= 0.93; q.vy *= 0.93; q.life -= 0.04;
+      if (q.life <= 0) return false;
+      ctx.strokeStyle = `rgba(${q.rgb},${q.life})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(q.x - q.vx * 2.5, q.y - q.vy * 2.5); ctx.stroke();
+      return true;
+    });
+    if (edge) { // board rim flares in the clear colour
+      const k = (now - edge.t0) / edge.dur;
+      if (k >= 1) edge = null;
+      else {
+        ctx.save();
+        ctx.shadowColor = edge.color.c; ctx.shadowBlur = 40 * (1 - k);
+        ctx.strokeStyle = `rgba(${edge.color.rgb},${1 - k})`; ctx.lineWidth = 3 + 5 * (1 - k);
+        rrect(ctx, -2, -2, BS + 4, BS + 4, 10); ctx.stroke();
+        ctx.restore();
+      }
+    }
     ctx.globalCompositeOperation = 'source-over';
     if (flash > 0.01) {
-      ctx.fillStyle = `rgba(200,240,255,${flash * 0.35})`;
+      ctx.fillStyle = `rgba(220,245,255,${flash * 0.38})`;
       rrect(ctx, 0, 0, BS, BS, 8); ctx.fill();
       flash *= 0.88;
     }
@@ -690,12 +766,13 @@
       if (k < 0) return true;
       if (k >= 1) return false;
       const sc = k < 0.12 ? 0.5 + (k / 0.12) * 0.6 : 1.1 - Math.min(0.1, (k - 0.12));
-      const size = Math.max(13, cell * 0.6 * o.size) * sc;
+      let size = Math.max(13, cell * 0.6 * o.size) * sc;
       ctx.save();
       ctx.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
       ctx.font = `900 ${size}px Orbitron, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const tw = ctx.measureText(o.text).width;
+      let tw = ctx.measureText(o.text).width;
+      if (tw > BS * 0.98) { size *= BS * 0.98 / tw; tw = BS * 0.98; ctx.font = `900 ${size}px Orbitron, sans-serif`; }
       const x = Math.min(W - tw / 2 - 4, Math.max(tw / 2 + 4, o.x)), y = o.y - k * cell * 0.9;
       const j = k < 0.15 ? (Math.random() - 0.5) * size * 0.25 : 0, sp = Math.max(1.5, size * 0.07);
       ctx.globalCompositeOperation = 'lighter';

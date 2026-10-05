@@ -9,6 +9,7 @@ A futuristic, basketball-themed take on the Block Blast puzzle game. Drag pieces
 - Fill a full **row or column** to clear it.
 - Clear on back-to-back moves to build a **streak** (heating up → on fire) for bonus points. Go 3 moves without clearing and the streak resets.
 - Clear the whole court for a **Nothing But Net** +300 bonus.
+- The **combo meter** fills with each back-to-back clear; the three diamonds show how many moves you have left to clear again before it resets.
 - When none of your pieces fit, it's the final buzzer.
 
 | Clear | Call |
